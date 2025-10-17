@@ -1,4 +1,4 @@
-#streamlit run D:\PythonProject\PythonProject\try'.py
+# try'.py 最终修正版本
 import streamlit as st
 import pandas as pd
 import random
@@ -6,19 +6,18 @@ from datetime import datetime
 import time
 import base64
 from pathlib import Path
-import streamlit.components.v1 as components  # <-- 新增：用于嵌入B站视频
+import streamlit.components.v1 as components
 
 # ======================================================================
 # --- 阿里云 OSS 存储配置 START ---
-# ⚠️ 注意：OSS 配置信息已根据您的地域（青岛）和密钥调整
-# 实际应用中，这些密钥应存储在安全的环境变量或 Streamlit Secrets 中！
+# ⚠️ 注意：API 连接必须使用 Streamlit Secrets 中配置的 Endpoint（现在我们知道应该是北京）
 
 try:
     import oss2
 
-    # ⚠️ 从 Streamlit Secrets 中读取配置
+    # ⚠️ 从 Streamlit Secrets 中读取配置 (请确保 Streamlit Cloud Secrets 已配置为北京 Endpoint！)
     OSS_BUCKET_NAME = st.secrets["oss_config"]["BUCKET_NAME"]
-    OSS_ENDPOINT = st.secrets["oss_config"]["ENDPOINT"]
+    OSS_ENDPOINT = st.secrets["oss_config"]["ENDPOINT"]  # 应该为 oss-cn-beijing.aliyuncs.com
     OSS_ACCESS_KEY_ID = st.secrets["oss_config"]["ACCESS_KEY_ID"]
     OSS_ACCESS_KEY_SECRET = st.secrets["oss_config"]["ACCESS_KEY_SECRET"]
 
@@ -27,47 +26,47 @@ try:
     oss_available = True
 
 
-    # OSS上传函数 (精简版，直接上传文件内容)
+    # OSS上传函数
     def upload_to_oss(uploaded_file, folder="uploads/"):
         file_name = f"{folder}{uploaded_file.name}_{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(100, 999)}{Path(uploaded_file.name).suffix}"
-
-        # 将 Streamlit 的 UploadedFile 对象转换为 bytes
         file_bytes = uploaded_file.getvalue()
 
+        # 核心修复点：此时 bucket 必须使用北京 Endpoint 才能 put_object 成功
         bucket.put_object(file_name, file_bytes)
-        # 返回公共访问 URL
-        return f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT.split('//')[-1]}/{file_name}"
+
+        # 返回公共访问 URL（使用北京的公共 URL，这与您的所有图片URL保持一致）
+        # ⚠️ 注意：我们在这里硬编码了北京的公共读 URL，因为所有图片都在那里
+        return f"https://{OSS_BUCKET_NAME}.oss-cn-beijing.aliyuncs.com/{file_name}"
 
 except ImportError:
     st.error("未找到 'oss2' 库。请运行 pip install oss2 安装。")
     oss_available = False
 except Exception as e:
-    # 捕获 OSS 连接错误，通常是密钥、Endpoint或Bucket名称错误
-    st.error(f"❌ OSS 连接失败：请确保 Endpoint、Bucket名称和密钥正确无误。错误信息: {e}")
+    # 提示用户检查 Secrets 配置
+    st.error(
+        f"❌ OSS 连接失败：请确保 Streamlit Secrets 中配置了 [oss_config] 且 ENDPOINT 为 oss-cn-beijing.aliyuncs.com。错误信息: {e}")
     oss_available = False
 # --- 阿里云 OSS 存储配置 END ---
 
 
-# --- 页面配置 ---
-# 定义本地图标文件的完整路径 (注意：完整路径在部署时是风险)
-ICON_PATH = Path(r"D:\PythonProject\PythonProject\a.ico")
-
+# --- 页面配置 (修复 page_icon) ---
+# 使用表情符号，避免云端路径问题
 try:
-    icon_base64 = base64.b64encode(open(ICON_PATH, "rb").read()).decode('utf-8')
-    icon_data_url = f"data:image/x-icon;base64,{icon_base64}"
     st.set_page_config(
         page_title="津沽水哨兵 | 津水守护者",
-        page_icon=icon_data_url,
+        page_icon="🌊",
         layout="wide",
         initial_sidebar_state="expanded"
     )
-except FileNotFoundError:
-    st.error(f"图标文件 a.ico 未找到！请检查路径：{ICON_PATH}")
+except Exception as e:
+    st.error(f"页面配置错误：{e}")
 
-# --- 1. 数据结构模拟 (在真实应用中，这会是数据库) ---
+# 统一使用您提供的 **北京 OSS URL 基础** 作为图片显示链接
+BASE_IMAGE_URL = "https://nty798.oss-cn-beijing.aliyuncs.com/"
 
-# 统一使用 OSS 公共 URL 链接作为所有图片的来源
-BASE_OSS_URL = f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT.split('//')[-1]}/"
+# --- 1. 数据结构模拟 ---
+# 之前动态生成 BASE_OSS_URL 的代码已移除，使用固定的 BASE_IMAGE_URL
+# BASE_OSS_URL = f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT.split('//')[-1]}/" # <-- 移除此行，避免混乱
 
 if 'issues' not in st.session_state:
     st.session_state.issues = pd.DataFrame(
@@ -81,10 +80,9 @@ if 'issues' not in st.session_state:
             "用户ID": ["u001", "u002", "u001"],
             "积分奖励": [50, 80, 70],
             "image_url": [
-                # 替换为真实的OSS占位符图片链接
-                f"{BASE_OSS_URL}demage.png",
-                f"{BASE_OSS_URL}eye.png",
-                f"{BASE_OSS_URL}bird.png"
+                f"{BASE_IMAGE_URL}demage.png",
+                f"{BASE_IMAGE_URL}eye.png",
+                f"{BASE_IMAGE_URL}bird.png"
             ],
             "认领人": ["牛天原", "郄家航", "杨凯升"],
             "解决奖励": [100, 150, 300]
@@ -100,8 +98,8 @@ if 'user_points' not in st.session_state:
 def app_sidebar():
     """侧边栏：用户信息和导航"""
     with st.sidebar:
-        # ⚠️ 替换为您的 Logo OSS 链接，这里假设 Logo 文件名为 a.ico
-        st.image(f"https://nty798.oss-cn-beijing.aliyuncs.com/eye.png", use_container_width=True, caption="津沽水哨兵 LOGO")
+        # 使用 BASE_IMAGE_URL 加载 a.ico
+        st.image(f"{BASE_IMAGE_URL}a.ico", use_container_width=True, caption="津沽水哨兵 LOGO")
         st.title("🌊 津沽水哨兵")
 
         st.markdown(f"**欢迎，{st.session_state.user_name}！**")
@@ -127,8 +125,7 @@ def render_issue_reporting():
 
     # 检查OSS是否可用
     if not oss_available:
-        st.error("由于OSS配置问题，问题上报功能无法使用。请检查OSS配置！")
-        return
+        st.error("由于OSS配置问题，问题上报和文件上传功能被禁用。请检查 Streamlit Secrets 配置！")
 
     st.subheader("环境问题快速上报")
 
@@ -148,9 +145,9 @@ def render_issue_reporting():
         description = st.text_area("详细描述（如气味、颜色、规模等）", max_chars=300)
 
         uploaded_file = st.file_uploader("📷 上传现场照片/视频", type=['png', 'jpg', 'jpeg', 'mp4'],
-                                         accept_multiple_files=False)
+                                         accept_multiple_files=False, disabled=not oss_available)  # 无法连接OSS则禁用上传
 
-        submit_button = st.form_submit_button("✅ 提交问题，同步至'虚拟河长'后台")
+        submit_button = st.form_submit_button("✅ 提交问题，同步至'虚拟河长'后台", disabled=not oss_available)
 
         if submit_button:
             if not uploaded_file or not description:
@@ -158,6 +155,7 @@ def render_issue_reporting():
             else:
                 # 实际上传到 OSS 并获取真实 URL
                 with st.spinner('正在上传照片到云端...'):
+                    # 只有 OSS 可用时才调用上传
                     real_url = upload_to_oss(uploaded_file)
 
                 new_id = st.session_state.issues['ID'].max() + 1
@@ -173,7 +171,7 @@ def render_issue_reporting():
                     "Status": "待认领",
                     "用户ID": st.session_state.user_name,
                     "积分奖励": points_report,
-                    "image_url": real_url,  # <-- 使用真实的 OSS URL
+                    "image_url": real_url,
                     "认领人": "",
                     "解决奖励": points_solve
                 }
@@ -212,7 +210,7 @@ def render_volunteer_actions():
     st.subheader("待认领问题列表 (您的行动入口)")
 
     if not oss_available:
-        st.warning("由于OSS配置问题，问题照片可能无法正常加载，请先修复OSS配置。")
+        st.warning("由于OSS配置问题，文件上传功能受限，部分功能可能无法使用。")
 
     available_issues = st.session_state.issues[st.session_state.issues['Status'] == '待认领'].sort_values(by="时间",
                                                                                                           ascending=True)
@@ -228,7 +226,7 @@ def render_volunteer_actions():
             st.markdown(f"**⏳ 上报时间:** {issue['时间'].strftime('%Y-%m-%d %H:%M')}")
             st.info(f"💰 **解决此问题可获得奖励：{issue['解决奖励']} 积分**")
 
-            # 展示照片：现在这里使用的是 OSS 公共 URL
+            # 展示照片：使用 BASE_IMAGE_URL
             st.image(issue['image_url'], caption=f"上报人拍摄的原问题照片 (ID:{issue['ID']})", width=300)
 
             # 认领和解决表单
@@ -238,15 +236,13 @@ def render_volunteer_actions():
                 solution_report = st.text_area("您采取的解决措施和结果（至少50字）")
 
                 solved_photos = st.file_uploader("📷 上传问题已解决的现场照片 (至少1张)", accept_multiple_files=True,
-                                                 key=f"solved_upload_{issue['ID']}")
+                                                 key=f"solved_upload_{issue['ID']}", disabled=not oss_available)
 
-                if st.form_submit_button(f"✅ 提交解决报告并申请积分 (问题ID {issue['ID']})"):
+                if st.form_submit_button(f"✅ 提交解决报告并申请积分 (问题ID {issue['ID']})",
+                                         disabled=not oss_available):
                     if len(solution_report) < 50 or not solved_photos:
                         st.error("请提供解决措施和至少一张解决后的照片！")
                     else:
-                        # 模拟解决后的照片上传（可选：将解决后的照片也上传到OSS）
-                        # 这里我们只执行状态更新和积分逻辑
-
                         st.session_state.issues.loc[index, 'Status'] = '审核中'
                         st.session_state.issues.loc[index, '认领人'] = st.session_state.user_name
 
@@ -260,7 +256,7 @@ def render_volunteer_actions():
                         st.rerun()
 
 
-# --- 3.3 津水知识库 (修复视频嵌入) ---
+# --- 3.3 津水知识库 ---
 def render_knowledge_base():
     """渲染“津水知识库”页面"""
     st.header("💡 津水知识库")
@@ -274,7 +270,7 @@ def render_knowledge_base():
         st.write(
             "📖 '加'**生态补水，**'减'**排污总量，**'乘'**科技手段，**'除'黑臭水体。通过系统性工程，子牙河水质得到显著提升。")
 
-        # ⚠️ 修复：使用 B站 HTML 嵌入方式替换 st.video()
+        # 使用 B站 HTML 嵌入方式
         bilibili_html_embed_1 = """
         <iframe src="//player.bilibili.com/player.html?bvid=BV1pg411o7Uz&page=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" style="width: 100%; height: 350px;"> </iframe>
         """
@@ -294,20 +290,20 @@ def render_knowledge_base():
         st.markdown("**回归子牙河的'白鹭'和'野鸭'**")
         col1, col2 = st.columns(2)
         with col1:
-            st.image(f"https://nty798.oss-cn-beijing.aliyuncs.com/bird.png", caption="小白鹭 (常见于海河子牙河交汇处)")  # <-- 替换为 OSS URL
+            st.image(f"{BASE_IMAGE_URL}bird.png", caption="小白鹭 (常见于海河子牙河交汇处)")
             st.write("🔍 **识别小贴士：** 白鹭体态优雅，羽毛洁白")
         with col2:
-            st.image(f"https://nty798.oss-cn-beijing.aliyuncs.com/duck.png", caption="绿头鸭 (常见于湿地和水库)")  # <-- 替换为 OSS URL
+            st.image(f"{BASE_IMAGE_URL}duck.png", caption="绿头鸭 (常见于湿地和水库)")
             st.write("🔍 **识别小贴士：** 野鸭多为深色，头部有金属光泽。水鸟的回归是水环境改善最直观的指标！")
 
     with tab3:
         st.subheader("专业内容短视频/漫画解读")
         st.markdown("## 漫画解读：雨污混接点的危害")
-        st.image(f"https://nty798.oss-cn-beijing.aliyuncs.com/demage.png", caption="一图看懂混接的危害和治理必要性")  # <-- 替换为 OSS URL
+        st.image(f"{BASE_IMAGE_URL}demage.png", caption="一图看懂混接的危害和治理必要性")
         st.write("📢 专业知识不复杂！用通俗易懂的方式了解治水原理。")
 
 
-# --- 3.4 积分激励体系 (替换图片链接) ---
+# --- 3.4 积分激励体系 ---
 def render_point_system():
     """渲染“积分商城/兑换”页面"""
     st.header("🎁 积分商城与激励体系")
@@ -319,11 +315,11 @@ def render_point_system():
 
     items = [
         {"名称": "🌊 空气加湿器", "积分": 500, "描述": "感受海风迎面的氤氲气息",
-         "image": f"https://nty798.oss-cn-beijing.aliyuncs.com/cup.png"},  # <-- 替换为 OSS URL
+         "image": f"{BASE_IMAGE_URL}cup.png"},
         {"名称": "📚 随机毛绒玩具", "积分": 300, "描述": "可爱毛绒玩具，抚慰一天疲惫心灵",
-         "image": f"https://nty798.oss-cn-beijing.aliyuncs.com/toy.png"},  # <-- 替换为 OSS URL
+         "image": f"{BASE_IMAGE_URL}toy.png"},
         {"名称": "🌳 健康院文创布包", "积分": 100, "描述": "印有健康院专属图案，河工学子IP文创",
-         "image": f"https://nty798.oss-cn-beijing.aliyuncs.com/bag.png"}  # <-- 替换为 OSS URL
+         "image": f"{BASE_IMAGE_URL}bag.png"}
     ]
 
     for item in items:
